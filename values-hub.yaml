@@ -73,16 +73,6 @@ clusterGroup:
       namespace: mlops
       project: mlops
       path: charts/mlflow-server
-      repoURL: https://github.com/strangiato/helm-charts
-      chartVersion: main
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        hooks:
-          - type: PostSync
-            command: ["helm"]
-            args: ["dependency", "update"]
 
     # credit-fraud-model-app deployed using a local chart
     inferencing-app:
