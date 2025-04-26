@@ -5,12 +5,11 @@ clusterGroup:
   namespaces:
     - vault
     - golang-external-secrets
-    - mlops
-    - openshift-storage
+    - inferencing-app
+    - storage
     - redhat-ods-operator:
         operatorGroup: true
         targetNamespaces: []
-    - inferencing-app
     - openshift-serverless:
         operatorGroup: true
         targetNamespaces: []
@@ -18,23 +17,14 @@ clusterGroup:
   projects:
     - hub
     - rhods
-    - mlops
     - inferencing-app
+    - storage
 
   subscriptions:
-    odf:
-      name: odf-operator
-      namespace: openshift-storage
-
     rhods:
       name: rhods-operator
       namespace: redhat-ods-operator
       channel: stable
-
-    crunchy:
-      name: crunchy-postgres-operator
-      source: certified-operators
-      namespace: openshift-operators
 
     servicemesh:
       name: servicemeshoperator
@@ -61,27 +51,20 @@ clusterGroup:
       chart: golang-external-secrets
       chartVersion: 0.1.*
 
-    rhods:
-      name: rhods
-      namespace: redhat-ods-operator
-      project: rhods
-      path: charts/rhods
+    # rhods:
+    #   name: rhods
+    #   namespace: redhat-ods-operator
+    #   project: rhods
+    #   path: charts/rhods
 
-    openshift-data-foundations:
-      name: openshift-data-foundations
-      namespace: openshift-storage
-      project: mlops
-      path: charts/openshift-data-foundations
-
-    mlflow:
-      name: mlflow-server
-      namespace: mlops
-      project: mlops
-      path: charts/mlflow-server
-
-    # credit-fraud-model-app deployed using a local chart
     inferencing-app:
       name: inferencing-app
       namespace: inferencing-app
       project: inferencing-app
       path: charts/inferencing-app
+
+    storage:
+      name: storage
+      namespace: storage
+      project: storage
+      path: charts/storage

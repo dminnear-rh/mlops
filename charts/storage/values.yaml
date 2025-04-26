@@ -1,0 +1,9 @@
+storage:
+  size: 20Gi
+  bucket: rhods
+  secretName: minio-secret
+
+secretStore:
+  name: vault-backend
+  kind: ClusterSecretStore
+  remoteKey: secret/data/global/minio-credentials
