@@ -9,6 +9,6 @@ namespace: inferencing-app
 uri: https://github.com/validatedpatterns/mlops-fraud-detection
 contextDir: demo/credit-fraud-detection-demo/application
 originalimage: python:3.10.4
-inferenceEndpoint: http://credit-card-fraud-predictor.credit-card-fraud.svc.cluster.local/v2/models/credit-card-fraud/infer
+inferenceEndpoint: http://fraud-predictor.credit-card-fraud.svc.cluster.local/v2/models/credit-card-fraud/infer
 port: 8080
 protocol: TCP
