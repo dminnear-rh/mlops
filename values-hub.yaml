@@ -63,8 +63,8 @@ clusterGroup:
       project: inferencing-app
       path: charts/inferencing-app
 
-    fraud-detection:
-      name: fraud-detection
+    minio:
+      name: minio-storage
       namespace: fraud-detection
       project: fraud-detection
-      path: charts/fraud-detection
+      path: charts/minio
