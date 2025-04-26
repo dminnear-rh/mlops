@@ -14,6 +14,9 @@ clusterGroup:
         labels:
           opendatahub.io/dashboard: "true"
           modelmesh-enabled: 'false'
+    - openshift-serverless:
+        operatorGroup: true
+        targetNamespaces: []
 
   projects:
     - hub
@@ -39,6 +42,11 @@ clusterGroup:
     servicemesh:
       name: servicemeshoperator
       namespace: openshift-operators
+      channel: stable
+
+    serverless:
+      name: serverless-operator
+      namespace: openshift-serverless
       channel: stable
 
   applications:
