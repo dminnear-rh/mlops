@@ -21,10 +21,9 @@ spec:
     modelmeshserving:
       managementState: Managed
     kserve:
+      defaultDeploymentMode: RawDeployment
+      RawDeploymentServiceConfig: Headed
       managementState: Managed
       serving:
-        ingressGateway:
-          certificate:
-            type: SelfSigned
-        managementState: Managed
+        managementState: Removed
         name: knative-serving
