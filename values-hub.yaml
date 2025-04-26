@@ -51,11 +51,11 @@ clusterGroup:
       chart: golang-external-secrets
       chartVersion: 0.1.*
 
-    # rhods:
-    #   name: rhods
-    #   namespace: redhat-ods-operator
-    #   project: rhods
-    #   path: charts/rhods
+    rhods:
+      name: rhods
+      namespace: redhat-ods-operator
+      project: rhods
+      path: charts/rhods
 
     inferencing-app:
       name: inferencing-app
