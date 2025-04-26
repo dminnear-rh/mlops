@@ -1,0 +1,84 @@
+clusterGroup:
+  name: hub
+  isHubCluster: true
+
+  namespaces:
+    - vault
+    - golang-external-secrets
+    - mlops
+    - openshift-storage
+    - redhat-ods-operator:
+        operatorGroup: true
+        targetNamespaces: []
+    - inferencing-app:
+        labels:
+          opendatahub.io/dashboard: "true"
+          modelmesh-enabled: 'false'
+
+  projects:
+    - hub
+    - rhods
+    - mlops
+    - inferencing-app
+
+  subscriptions:
+    odf:
+      name: odf-operator
+      namespace: openshift-storage
+
+    rhods:
+      name: rhods-operator
+      namespace: redhat-ods-operator
+      channel: stable
+
+    crunchy:
+      name: crunchy-postgres-operator
+      source: certified-operators
+      namespace: openshift-operators
+
+    servicemesh:
+      name: servicemeshoperator
+      namespace: openshift-operators
+      channel: stable
+
+  applications:
+    vault:
+      name: vault
+      namespace: vault
+      project: hub
+      chart: hashicorp-vault
+      chartVersion: 0.1.*
+
+    golang-external-secrets:
+      name: golang-external-secrets
+      namespace: golang-external-secrets
+      project: hub
+      chart: golang-external-secrets
+      chartVersion: 0.1.*
+
+    rhods:
+      name: rhods
+      namespace: redhat-ods-operator
+      project: rhods
+      path: charts/rhods
+
+    openshift-data-foundations:
+      name: openshift-data-foundations
+      namespace: openshift-storage
+      project: mlops
+      path: charts/all/openshift-data-foundations
+
+    mlflow:
+      name: mlflow-server
+      namespace: mlops
+      project: mlops
+      path: charts/mlflow-server
+      repoURL: https://github.com/strangiato/helm-charts
+      chartVersion: main
+
+    # credit-fraud-model-app deployed using a local chart
+    inferencing-app:
+      name: inferencing-app
+      namespace: inferencing-app
+      project: inferencing-app
+      path: charts/inferencing-app
