@@ -10,9 +10,7 @@ clusterGroup:
     - redhat-ods-operator:
         operatorGroup: true
         targetNamespaces: []
-    - inferencing-app:
-        labels:
-          opendatahub.io/dashboard: "true"
+    - inferencing-app
     - openshift-serverless:
         operatorGroup: true
         targetNamespaces: []
@@ -87,9 +85,3 @@ clusterGroup:
       namespace: inferencing-app
       project: inferencing-app
       path: charts/inferencing-app
-
-    jobs:
-      name: jobs
-      namespace: default
-      project: default
-      path: charts/jobs
