@@ -6,7 +6,9 @@ clusterGroup:
     - vault
     - golang-external-secrets
     - inferencing-app
-    - fraud-detection
+    - fraud-detection:
+        labels:
+          opendatahub.io/dashboard: "true"
     - redhat-ods-operator:
         operatorGroup: true
         targetNamespaces: []
