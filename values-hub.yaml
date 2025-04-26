@@ -6,7 +6,7 @@ clusterGroup:
     - vault
     - golang-external-secrets
     - inferencing-app
-    - storage
+    - fraud-detection
     - redhat-ods-operator:
         operatorGroup: true
         targetNamespaces: []
@@ -18,7 +18,7 @@ clusterGroup:
     - hub
     - rhods
     - inferencing-app
-    - storage
+    - fraud-detection
 
   subscriptions:
     rhods:
@@ -63,8 +63,8 @@ clusterGroup:
       project: inferencing-app
       path: charts/inferencing-app
 
-    storage:
-      name: storage
-      namespace: storage
-      project: storage
-      path: charts/storage
+    fraud-detection:
+      name: fraud-detection
+      namespace: fraud-detection
+      project: fraud-detection
+      path: charts/fraud-detection
