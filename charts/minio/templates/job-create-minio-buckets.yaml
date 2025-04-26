@@ -51,10 +51,10 @@ spec:
               oc get secret minio-root-user
               env | grep MINIO
               cat << 'EOF' | python3
-              import boto3, os, base64
+              import boto3, os
 
-              access_key = base64.b64decode(os.getenv("MINIO_ROOT_USER")).decode()
-              secret_key = base64.b64decode(os.getenv("MINIO_ROOT_PASSWORD")).decode()
+              access_key = os.getenv("MINIO_ROOT_USER")
+              secret_key = os.getenv("MINIO_ROOT_PASSWORD")
 
               s3 = boto3.client("s3",
                                 endpoint_url="http://minio:9000",
