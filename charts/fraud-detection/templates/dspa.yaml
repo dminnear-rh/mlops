@@ -11,6 +11,7 @@ spec:
     externalStorage:
       bucket: pipeline-artifacts
       host: minio.fraud-detection.svc.cluster.local
+      port: 9000
       region: us-east-1
       s3CredentialsSecret:
         accessKey: AWS_ACCESS_KEY_ID
