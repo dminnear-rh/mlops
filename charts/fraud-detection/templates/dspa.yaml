@@ -15,7 +15,7 @@ spec:
     externalStorage:
       basePath: ''
       bucket: pipeline-artifacts
-      host: minio-s3-fraud-detection.apps.drew-rhoai.aws.validatedpatterns.io
+      host: {{ printf "minio-s3-fraud-detection.apps.%s" .Values.global.clusterDomain }}
       port: ''
       region: us-east-1
       s3CredentialsSecret:
