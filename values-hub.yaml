@@ -76,8 +76,8 @@ clusterGroup:
       project: fraud-detection
       path: charts/minio
 
-    # fraud-detection:
-    #   name: fraud-detection
-    #   namespace: fraud-detection
-    #   project: fraud-detection
-    #   path: charts/fraud-detection
+    fraud-detection:
+      name: fraud-detection
+      namespace: fraud-detection
+      project: fraud-detection
+      path: charts/fraud-detection
