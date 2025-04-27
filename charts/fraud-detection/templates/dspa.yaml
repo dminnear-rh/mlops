@@ -10,7 +10,7 @@ spec:
     enableExternalRoute: true
     externalStorage:
       bucket: pipeline-artifacts
-      host: minio
+      host: minio.fraud-detection.svc.cluster.local
       region: us-east-1
       s3CredentialsSecret:
         accessKey: AWS_ACCESS_KEY_ID
