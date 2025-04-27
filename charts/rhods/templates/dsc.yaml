@@ -33,3 +33,6 @@ spec:
       managementState: Removed
     workbenches:
       managementState: Managed
+    modelregistry:
+      managementState: Managed
+      registriesNamespace: rhoai-model-registries

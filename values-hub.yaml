@@ -15,6 +15,7 @@ clusterGroup:
     - openshift-serverless:
         operatorGroup: true
         targetNamespaces: []
+    - rhoai-model-registries
 
   projects:
     - hub
@@ -36,6 +37,11 @@ clusterGroup:
     serverless:
       name: serverless-operator
       namespace: openshift-serverless
+      channel: stable
+
+    authorino:
+      name: authorino-operator
+      namespace: openshift-operators
       channel: stable
 
   applications:
