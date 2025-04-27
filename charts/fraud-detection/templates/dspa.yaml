@@ -1,0 +1,21 @@
+apiVersion: datasciencepipelinesapplications.opendatahub.io/v1
+kind: DataSciencePipelinesApplication
+metadata:
+  name: fraud-detection
+spec:
+  dspVersion: v2
+  apiServer:
+    enableSamplePipeline: true
+  objectStorage:
+    enableExternalRoute: true
+    externalStorage:
+      bucket: pipeline-artifacts
+      host: minio
+      region: us-east-1
+      s3CredentialsSecret:
+        accessKey: AWS_ACCESS_KEY_ID
+        secretKey: AWS_SECRET_ACCESS_KEY
+        secretName: aws-connection-pipeline-artifacts
+      scheme: http
+  mlpipelineUI:
+    image: quay.io/opendatahub/ds-pipelines-frontend:latest

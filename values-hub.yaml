@@ -15,7 +15,6 @@ clusterGroup:
     - openshift-serverless:
         operatorGroup: true
         targetNamespaces: []
-    - rhoai-model-registries
 
   projects:
     - hub
@@ -76,3 +75,9 @@ clusterGroup:
       namespace: fraud-detection
       project: fraud-detection
       path: charts/minio
+
+    fraud-detection:
+      name: fraud-detection
+      namespace: fraud-detection
+      project: fraud-detection
+      path: charts/fraud-detection
