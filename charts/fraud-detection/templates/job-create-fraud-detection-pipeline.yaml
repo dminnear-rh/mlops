@@ -44,14 +44,17 @@ spec:
               BEARER_TOKEN=$(oc whoami --show-token)
 
               API="https://ds-pipeline-dspa.fraud-detection.svc.cluster.local:8888"
-              ENDPOINT="$API/apis/v2beta1/pipelines/create"
+              ENDPOINT="$API/apis/v2beta1/pipelines"
+
+              echo "Testing endpoint availability"
+              curl -k -H "Authorization: Bearer ${BEARER_TOKEN}" "${ENDPOINT}"
 
               echo "Posting pipeline definition to ${ENDPOINT}"
               curl -k -X POST \
                    -H "Authorization: Bearer ${BEARER_TOKEN}" \
                    -H "Content-Type: application/json" \
                    --data @- \
-                   "${ENDPOINT}" <<'JSON'
+                   "${ENDPOINT}/create" <<'JSON'
               {
                 "pipeline": {
                   "display_name": "fraud-detection",
