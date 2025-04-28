@@ -46,7 +46,7 @@ spec:
               ENDPOINT="$API/apis/v2beta1/pipelines"
 
               echo "Testing endpoint availability"
-              curl -k -H "Authorization: Bearer ${BEARER_TOKEN}" "${ENDPOINT}"
+              curl -vvv -k -H "Authorization: Bearer ${BEARER_TOKEN}" "${ENDPOINT}"
 
               echo "Posting pipeline definition to ${ENDPOINT}"
               curl -k -X POST \
