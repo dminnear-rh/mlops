@@ -85,7 +85,8 @@ spec:
               # ------------------------------------------------------------------
               # 2) Create the pipeline
               # ------------------------------------------------------------------
-              cat > payload.json <<'EOF'
+              # Write JSON payload to a safe location
+              cat > /tmp/payload.json <<'EOF'
               {
                 "pipeline": {
                   "display_name": "fraud-detection",
@@ -103,7 +104,7 @@ spec:
 
               # Post it and extract pipeline_id
               PIPELINE_ID=$(curl -ks -H 'Content-Type: application/json' \
-                -X POST --data @payload.json \
+                -X POST --data @/tmp/payload.json \
                 "${PIPELINES}/create" \
                 | python3 -c 'import sys, json; print(json.load(sys.stdin).get("pipeline_id", ""))')
 
