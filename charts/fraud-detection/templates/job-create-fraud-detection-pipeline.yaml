@@ -85,11 +85,7 @@ spec:
               # ------------------------------------------------------------------
               # 2) Create the pipeline
               # ------------------------------------------------------------------
-              echo "📦  Creating (or updating) pipeline and capturing ID …"
-              PIPELINE_ID=$(curl -ks -H 'Content-Type: application/json' \
-                -X POST --data @- \
-                "${PIPELINES}/create" <<'JSON' |
-                python3 -c 'import sys, json; print(json.load(sys.stdin).get("pipeline_id", ""))'
+              cat > payload.json <<'EOF'
               {
                 "pipeline": {
                   "display_name": "fraud-detection",
@@ -103,8 +99,13 @@ spec:
                   }
                 }
               }
-              JSON
-              )
+              EOF
+
+              # Post it and extract pipeline_id
+              PIPELINE_ID=$(curl -ks -H 'Content-Type: application/json' \
+                -X POST --data @payload.json \
+                "${PIPELINES}/create" \
+                | python3 -c 'import sys, json; print(json.load(sys.stdin).get("pipeline_id", ""))')
 
               echo "pipeline_id=${PIPELINE_ID}"
 
@@ -113,6 +114,9 @@ spec:
                 exit 1
               fi
 
+              # ------------------------------------------------------------------
+              # 2) Run the pipeline
+              # ------------------------------------------------------------------
               echo "🚀  Triggering run …"
               curl -ks -H 'Content-Type: application/json' \
                    -X POST --data @- \
@@ -128,3 +132,4 @@ spec:
                 },
                 "service_account": ""
               }
+              JSON
