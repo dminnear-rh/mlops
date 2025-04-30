@@ -1,26 +1,18 @@
-# ------------------------------------------------------------
-# 1)  ServiceAccount
-# ------------------------------------------------------------
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: pipeline-bootstrap
   namespace: fraud-detection
 ---
-# ------------------------------------------------------------
-# 2)  Least-privilege Role for port-forwarding
-# ------------------------------------------------------------
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: port-forwarder
   namespace: fraud-detection
 rules:
-  # allow oc to discover a backing pod for the Service
   - apiGroups: [""]
     resources: ["services", "endpoints"]
     verbs: ["get", "list", "watch"]
-  # allow oc port-forward pod/…
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
@@ -28,9 +20,6 @@ rules:
     resources: ["pods/portforward"]
     verbs: ["create"]
 ---
-# ------------------------------------------------------------
-# 3)  Bind SA → Role
-# ------------------------------------------------------------
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -45,9 +34,6 @@ subjects:
     name: pipeline-bootstrap
     namespace: fraud-detection
 ---
-# ------------------------------------------------------------
-# 4)  Job that uses oc port-forward + curl
-# ------------------------------------------------------------
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -55,7 +41,7 @@ metadata:
   namespace: fraud-detection
 spec:
   backoffLimit: 0
-  ttlSecondsAfterFinished: null          # keep pod for log review
+  ttlSecondsAfterFinished: null
   template:
     metadata:
       name: create-fraud-detection-pipeline
@@ -99,11 +85,11 @@ spec:
               # ------------------------------------------------------------------
               # 2) Create the pipeline
               # ------------------------------------------------------------------
-              echo "Posting pipeline definition to ${CREATE}"
-              curl -ks \
-                   -H 'Content-Type: application/json' \
-                   -X POST --data @- \
-                   "${CREATE}" <<'JSON'
+              echo "📦  Creating (or updating) pipeline and capturing ID …"
+              PIPELINE_ID=$(curl -ks -H 'Content-Type: application/json' \
+                -X POST --data @- \
+                "${PIPELINES}/create" <<'JSON' |
+                python3 -c 'import sys, json; print(json.load(sys.stdin).get("pipeline_id", ""))'
               {
                 "pipeline": {
                   "display_name": "fraud-detection",
@@ -118,4 +104,27 @@ spec:
                 }
               }
               JSON
-              echo "✅ Pipeline created."
+              )
+
+              echo "pipeline_id=${PIPELINE_ID}"
+
+              if [[ -z "${PIPELINE_ID}" ]]; then
+                echo "❌ Failed to extract pipeline_id. Exiting."
+                exit 1
+              fi
+
+              echo "🚀  Triggering run …"
+              curl -ks -H 'Content-Type: application/json' \
+                   -X POST --data @- \
+                   "${RUNS}" <<JSON
+              {
+                "display_name": "job-run",
+                "description": "",
+                "pipeline_version_reference": {
+                  "pipeline_id": "${PIPELINE_ID}"
+                },
+                "runtime_config": {
+                  "parameters": {}
+                },
+                "service_account": ""
+              }
