@@ -3,7 +3,7 @@ kind: InferenceService
 metadata:
   annotations:
     openshift.io/display-name: fraud-detection
-    security.opendatahub.io/enable-auth: 'true'
+    security.opendatahub.io/enable-auth: 'false'
     serving.kserve.io/deploymentMode: RawDeployment
   name: fraud-detection
   labels:
