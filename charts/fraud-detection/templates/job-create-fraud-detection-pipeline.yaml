@@ -75,7 +75,7 @@ spec:
               RUNS="${API}/apis/v2beta1/runs"
 
               echo "Waiting for ${HEALTH} …"
-              for i in {1..30}; do
+              for i in {1..60}; do
                 if curl -ksf "${HEALTH}" >/dev/null ; then
                   echo "✓ Pipeline API is ready via port-forward."
                   break

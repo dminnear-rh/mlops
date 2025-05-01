@@ -1,0 +1,14 @@
+# apiVersion: serving.kserve.io/v1beta1
+# kind: InferenceService
+# metadata:
+#   name: fraud-detection
+#   annotations:
+#     serving.kserve.io/deploymentMode: ModelMesh
+# spec:
+#   predictor:
+#     model:
+#       modelFormat:
+#         name: onnx
+#       storage:
+#         key: aws-connection-my-storage
+#         path: models/fraud
