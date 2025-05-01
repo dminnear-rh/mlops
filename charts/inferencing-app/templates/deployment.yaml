@@ -23,7 +23,7 @@ spec:
         # image: {{ .Values.appName }}:latest
         env:
         - name: INFERENCE_ENDPOINT
-          value: {{ .Values.inferenceEndpoint }}
+          value: https://fraud-detection-fraud-detection.apps.{{ .Values.global.clusterDomain }}/v2/models/fraud-detection/infer
         ports:
         - containerPort: {{ .Values.port }}
           name: http
