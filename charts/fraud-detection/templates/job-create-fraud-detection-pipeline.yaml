@@ -65,10 +65,12 @@ spec:
 
               echo "⏳ Waiting for endpoints on svc/ds-pipeline-dspa…"
               for i in {1..60}; do
-                ENDPOINTS=$(oc get ep ds-pipeline-dspa -n fraud-detection -o jsonpath='{.subsets[*].addresses[*].ip}')
-                if [[ -n "$ENDPOINTS" ]]; then
-                  echo "✅ Found endpoints: $ENDPOINTS"
-                  break
+                if oc get ep ds-pipeline-dspa -n fraud-detection > /dev/null 2>&1; then
+                  ENDPOINTS=$(oc get ep ds-pipeline-dspa -n fraud-detection -o jsonpath='{.subsets[*].addresses[*].ip}')
+                  if [[ -n "$ENDPOINTS" ]]; then
+                    echo "✅ Found endpoints: $ENDPOINTS"
+                    break
+                  fi
                 fi
                 sleep 5
               done
