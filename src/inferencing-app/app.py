@@ -1,7 +1,8 @@
 import os
+
+import gradio as gr
 import requests
 import urllib3
-import gradio as gr
 
 # Disable warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -14,8 +15,10 @@ GRADIO_SERVER_NAME = os.getenv("GRADIO_SERVER_NAME", "0.0.0.0")
 
 # Inference call
 def predict(
+    distance_from_home,
     distance_from_last_transaction,
     ratio_to_median_purchase_price,
+    repeat_retailer,
     used_chip,
     used_pin_number,
     online_order,
@@ -24,12 +27,14 @@ def predict(
         "inputs": [
             {
                 "name": "dense_input",
-                "shape": [1, 5],
+                "shape": [1, 7],
                 "datatype": "FP32",
                 "data": [
                     [
+                        distance_from_home,
                         distance_from_last_transaction,
                         ratio_to_median_purchase_price,
+                        repeat_retailer,
                         used_chip,
                         used_pin_number,
                         online_order,
@@ -49,15 +54,21 @@ def predict(
 demo = gr.Interface(
     fn=predict,
     inputs=[
+        gr.Number(label="Distance from Home"),
         gr.Number(label="Distance from Last Transaction"),
         gr.Number(label="Ratio to Median Purchase Price"),
-        gr.Number(label="Used Chip"),
-        gr.Number(label="Used PIN Number"),
-        gr.Number(label="Online Order"),
+        gr.Radio([0, 1], label="Repeat Retailer"),
+        gr.Radio([0, 1], label="Used Chip"),
+        gr.Radio([0, 1], label="Used PIN Number"),
+        gr.Radio([0, 1], label="Online Order"),
     ],
     outputs="textbox",
-    examples=[[0.311, 1.946, 1.0, 100.0, 0.0], [175.989, 0.856, 0.0, 0.0, 1.0]],
+    examples=[
+        [57.88, 0.31, 1.95, 1, 1, 0, 0],
+        [15.69, 175.99, 0.86, 0, 0, 0, 1],
+    ],
     title="Predict Credit Card Fraud",
+    allow_flagging="never",
 )
 
 demo.launch(server_name=GRADIO_SERVER_NAME, server_port=GRADIO_SERVER_PORT)

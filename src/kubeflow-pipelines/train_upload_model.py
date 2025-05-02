@@ -1,10 +1,7 @@
 import os
 
-from kfp import compiler
-from kfp import dsl
+from kfp import compiler, dsl, kubernetes
 from kfp.dsl import InputPath, OutputPath
-
-from kfp import kubernetes
 
 
 @dsl.component(
@@ -35,32 +32,33 @@ def train_model(
     validate_data_input_path: InputPath(),
     model_output_path: OutputPath(),
 ):
-    import numpy as np
-    import pandas as pd
-    from keras.models import Sequential
-    from keras.layers import Dense, Dropout, BatchNormalization, Activation
-    from sklearn.model_selection import train_test_split
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.utils import class_weight
-    import tf2onnx
-    import onnx
     import pickle
     from pathlib import Path
 
+    import numpy as np
+    import onnx
+    import pandas as pd
+    import tf2onnx
+    from keras.layers import Activation, BatchNormalization, Dense, Dropout
+    from keras.models import Sequential
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.utils import class_weight
+
     # Load the CSV data which we will use to train the model.
     # It contains the following fields:
-    #   distancefromhome - The distance from home where the transaction happened.
-    #   distancefromlast_transaction - The distance from last transaction happened.
-    #   ratiotomedianpurchaseprice - Ratio of purchased price compared to median purchase price.
+    #   distance_from_home - The distance from home where the transaction happened.
+    #   distance_from_last_transaction - The distance from last transaction happened.
+    #   ratio_to_median_purchase_price - Ratio of purchased price compared to median purchase price.
     #   repeat_retailer - If it's from a retailer that already has been purchased from before.
     #   used_chip - If the (credit card) chip was used.
-    #   usedpinnumber - If the PIN number was used.
+    #   used_pin_number - If the PIN number was used.
     #   online_order - If it was an online order.
     #   fraud - If the transaction is fraudulent.
-
     feature_indexes = [
+        0,  # distance_from_home
         1,  # distance_from_last_transaction
         2,  # ratio_to_median_purchase_price
+        3,  # repeat_retailer
         4,  # used_chip
         5,  # used_pin_number
         6,  # online_order
@@ -113,7 +111,7 @@ def train_model(
     # Train the model and get performance
 
     epochs = 2
-    history = model.fit(
+    model.fit(
         X_train,
         y_train,
         epochs=epochs,
@@ -134,6 +132,7 @@ def train_model(
 )
 def upload_model(input_model_path: InputPath()):
     import os
+
     import boto3
     import botocore
 
