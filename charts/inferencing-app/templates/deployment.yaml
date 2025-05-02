@@ -1,12 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  annotations:
-    argocd.argoproj.io/hook: "PostSync"
   name: {{ .Values.appName }}
   labels:
     app: {{ .Values.appName }}
-  namespace: {{ .Values.namespace }}
 spec:
   replicas: 1
   selector:
@@ -19,11 +16,12 @@ spec:
     spec:
       containers:
       - name: {{ .Values.appName }}
-        image: image-registry.openshift-image-registry.svc:5000/{{ .Values.namespace }}/{{ .Values.appName }}-is-app:latest
-        # image: {{ .Values.appName }}:latest
+        image: quay.io/dminnear/fraud-detection-app:latest
         env:
         - name: INFERENCE_ENDPOINT
           value: https://fraud-detection-fraud-detection.apps.{{ .Values.global.clusterDomain }}/v2/models/fraud-detection/infer
+        - name: GRADIO_SERVER_PORT
+          value: {{ .Values.port }}
         ports:
         - containerPort: {{ .Values.port }}
           name: http

@@ -1,13 +1,3 @@
-global:
-  localClusterDomain: ""
-
-clusterGroup:
-  name: ""
-
 appName: inferencing-app
-namespace: inferencing-app
-uri: https://github.com/validatedpatterns/mlops-fraud-detection
-contextDir: demo/credit-fraud-detection-demo/application
-originalimage: python:3.10.4
-port: 8080
+port: 7860
 protocol: TCP
