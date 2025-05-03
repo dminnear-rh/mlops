@@ -32,97 +32,92 @@ def train_model(
     validate_data_input_path: InputPath(),
     model_output_path: OutputPath(),
 ):
+    # This version builds a large network (4096 units per layer) in float64 to
+    # force high memory usage during training.
+
     import pickle
     from pathlib import Path
 
     import numpy as np
     import onnx
     import pandas as pd
+    import tensorflow as tf
     import tf2onnx
-    from keras.layers import Activation, BatchNormalization, Dense, Dropout
+    from keras.layers import Activation, BatchNormalization, Dense, Dropout, Input
     from keras.models import Sequential
     from sklearn.preprocessing import StandardScaler
     from sklearn.utils import class_weight
 
-    # Load the CSV data which we will use to train the model.
-    # It contains the following fields:
-    #   distance_from_home - The distance from home where the transaction happened.
-    #   distance_from_last_transaction - The distance from last transaction happened.
-    #   ratio_to_median_purchase_price - Ratio of purchased price compared to median purchase price.
-    #   repeat_retailer - If it's from a retailer that already has been purchased from before.
-    #   used_chip - If the (credit card) chip was used.
-    #   used_pin_number - If the PIN number was used.
-    #   online_order - If it was an online order.
-    #   fraud - If the transaction is fraudulent.
-    feature_indexes = [
-        0,  # distance_from_home
-        1,  # distance_from_last_transaction
-        2,  # ratio_to_median_purchase_price
-        3,  # repeat_retailer
-        4,  # used_chip
-        5,  # used_pin_number
-        6,  # online_order
-    ]
+    # Use float64 to double tensor size
+    tf.keras.backend.set_floatx("float64")
 
-    label_indexes = [7]  # fraud
+    # Columns: 0..6 are features, 7 is the label
+    feature_indexes = list(range(7))
+    label_indexes = [7]
 
-    X_train = pd.read_csv(train_data_input_path)
-    y_train = X_train.iloc[:, label_indexes]
-    X_train = X_train.iloc[:, feature_indexes]
+    # Load data
+    X_train_df = pd.read_csv(train_data_input_path)
+    y_train_df = X_train_df.iloc[:, label_indexes]
+    X_train_df = X_train_df.iloc[:, feature_indexes]
 
-    X_val = pd.read_csv(validate_data_input_path)
-    y_val = X_val.iloc[:, label_indexes]
-    X_val = X_val.iloc[:, feature_indexes]
+    X_val_df = pd.read_csv(validate_data_input_path)
+    y_val_df = X_val_df.iloc[:, label_indexes]
+    X_val_df = X_val_df.iloc[:, feature_indexes]
 
-    # Scale the data to remove mean and have unit variance. The data will be between -1 and 1, which makes it a lot easier for the model to learn than random (and potentially large) values.
-    # It is important to only fit the scaler to the training data, otherwise you are leaking information about the global distribution of variables (which is influenced by the test set) into the training set.
-
+    # Scale features
     scaler = StandardScaler()
-
-    X_train = scaler.fit_transform(X_train.values)
+    X_train = scaler.fit_transform(X_train_df.values).astype("float64")
+    X_val = scaler.transform(X_val_df.values).astype("float64")
 
     Path("artifact").mkdir(parents=True, exist_ok=True)
-    with open("artifact/scaler.pkl", "wb") as handle:
-        pickle.dump(scaler, handle)
+    pickle.dump(scaler, open("artifact/scaler.pkl", "wb"))
 
-    # Since the dataset is unbalanced (it has many more non-fraud transactions than fraudulent ones), set a class weight to weight the few fraudulent transactions higher than the many non-fraud transactions.
-    class_weights = class_weight.compute_class_weight(
-        "balanced", classes=np.unique(y_train), y=y_train.values.ravel()
+    # Class weights for imbalance
+    cw = class_weight.compute_class_weight(
+        "balanced", classes=np.unique(y_train_df), y=y_train_df.values.ravel()
     )
-    class_weights = {i: class_weights[i] for i in range(len(class_weights))}
+    class_weights = {i: w for i, w in enumerate(cw)}
 
-    # Build the model, the model we build here is a simple fully connected deep neural network, containing 3 hidden layers and one output layer.
+    # Build a large fully connected network
+    UNITS = 4096
+    model = Sequential(
+        [
+            Input(shape=(len(feature_indexes),), dtype="float64"),
+            Dense(UNITS, activation="relu"),
+            Dropout(0.3),
+            Dense(UNITS),
+            BatchNormalization(),
+            Activation("relu"),
+            Dropout(0.3),
+            Dense(UNITS),
+            BatchNormalization(),
+            Activation("relu"),
+            Dropout(0.3),
+            Dense(UNITS),
+            BatchNormalization(),
+            Activation("relu"),
+            Dropout(0.3),
+            Dense(1, activation="sigmoid"),
+        ]
+    )
 
-    model = Sequential()
-    model.add(Dense(32, activation="relu", input_dim=len(feature_indexes)))
-    model.add(Dropout(0.2))
-    model.add(Dense(32))
-    model.add(BatchNormalization())
-    model.add(Activation("relu"))
-    model.add(Dropout(0.2))
-    model.add(Dense(32))
-    model.add(BatchNormalization())
-    model.add(Activation("relu"))
-    model.add(Dropout(0.2))
-    model.add(Dense(1, activation="sigmoid"))
     model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
     model.summary()
 
-    # Train the model and get performance
-
-    epochs = 2
     model.fit(
         X_train,
-        y_train,
-        epochs=epochs,
-        validation_data=(scaler.transform(X_val.values), y_val),
-        verbose=True,
+        y_train_df,
+        epochs=2,
+        validation_data=(X_val, y_val_df),
+        verbose=2,
         class_weight=class_weights,
     )
 
-    # Save the model as ONNX for easy use of ModelMesh
-    model_proto, _ = tf2onnx.convert.from_keras(model)
-    print(model_output_path)
+    # Export to ONNX
+    spec = (
+        tf.TensorSpec((None, len(feature_indexes)), tf.float64, name="dense_input"),
+    )
+    model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=spec, opset=13)
     onnx.save(model_proto, model_output_path)
 
 
