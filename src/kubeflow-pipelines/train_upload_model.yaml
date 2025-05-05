@@ -53,7 +53,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.5.0'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
         - sh
@@ -75,7 +75,7 @@ deploymentSpec:
           \   url = \"https://raw.githubusercontent.com/rh-aiservices-bu/fraud-detection/main/data/validate.csv\"\
           \n    urllib.request.urlretrieve(url, validate_data_output_path)\n    print(\"\
           validation data downloaded\")\n\n"
-        image: quay.io/modh/runtime-images:runtime-cuda-tensorflow-ubi9-python-3.9-2024a-20240523
+        image: quay.io/modh/runtime-images:runtime-cuda-pytorch-ubi9-python-3.11-20250501-8e41d5c
     exec-train-model:
       container:
         args:
@@ -88,10 +88,9 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.5.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'onnx==1.17.0'\
-          \ 'onnxruntime==1.19.2' 'tf2onnx==1.16.1' && \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -104,45 +103,53 @@ deploymentSpec:
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef train_model(\n    train_data_input_path: InputPath(),\n    validate_data_input_path:\
-          \ InputPath(),\n    model_output_path: OutputPath(),\n):\n    # This version\
-          \ builds a large network (4096 units per layer) in float64 to\n    # force\
-          \ high memory usage during training.\n\n    import pickle\n    from pathlib\
-          \ import Path\n\n    import numpy as np\n    import onnx\n    import pandas\
-          \ as pd\n    import tensorflow as tf\n    import tf2onnx\n    from keras.layers\
-          \ import Activation, BatchNormalization, Dense, Dropout, Input\n    from\
-          \ keras.models import Sequential\n    from sklearn.preprocessing import\
-          \ StandardScaler\n    from sklearn.utils import class_weight\n\n    # Use\
-          \ float64 to double tensor size\n    tf.keras.backend.set_floatx(\"float64\"\
-          )\n\n    # Columns: 0..6 are features, 7 is the label\n    feature_indexes\
-          \ = list(range(7))\n    label_indexes = [7]\n\n    # Load data\n    X_train_df\
-          \ = pd.read_csv(train_data_input_path)\n    y_train_df = X_train_df.iloc[:,\
-          \ label_indexes]\n    X_train_df = X_train_df.iloc[:, feature_indexes]\n\
-          \n    X_val_df = pd.read_csv(validate_data_input_path)\n    y_val_df = X_val_df.iloc[:,\
-          \ label_indexes]\n    X_val_df = X_val_df.iloc[:, feature_indexes]\n\n \
-          \   # Scale features\n    scaler = StandardScaler()\n    X_train = scaler.fit_transform(X_train_df.values).astype(\"\
-          float64\")\n    X_val = scaler.transform(X_val_df.values).astype(\"float64\"\
-          )\n\n    Path(\"artifact\").mkdir(parents=True, exist_ok=True)\n    pickle.dump(scaler,\
-          \ open(\"artifact/scaler.pkl\", \"wb\"))\n\n    # Class weights for imbalance\n\
-          \    cw = class_weight.compute_class_weight(\n        \"balanced\", classes=np.unique(y_train_df),\
-          \ y=y_train_df.values.ravel()\n    )\n    class_weights = {i: w for i, w\
-          \ in enumerate(cw)}\n\n    # Build a large fully connected network\n   \
-          \ UNITS = 4096\n    model = Sequential(\n        [\n            Input(shape=(len(feature_indexes),),\
-          \ dtype=\"float64\"),\n            Dense(UNITS, activation=\"relu\"),\n\
-          \            Dropout(0.3),\n            Dense(UNITS),\n            BatchNormalization(),\n\
-          \            Activation(\"relu\"),\n            Dropout(0.3),\n        \
-          \    Dense(UNITS),\n            BatchNormalization(),\n            Activation(\"\
-          relu\"),\n            Dropout(0.3),\n            Dense(UNITS),\n       \
-          \     BatchNormalization(),\n            Activation(\"relu\"),\n       \
-          \     Dropout(0.3),\n            Dense(1, activation=\"sigmoid\"),\n   \
-          \     ]\n    )\n\n    model.compile(optimizer=\"adam\", loss=\"binary_crossentropy\"\
-          , metrics=[\"accuracy\"])\n    model.summary()\n\n    model.fit(\n     \
-          \   X_train,\n        y_train_df,\n        epochs=2,\n        validation_data=(X_val,\
-          \ y_val_df),\n        verbose=2,\n        class_weight=class_weights,\n\
-          \    )\n\n    # Export to ONNX\n    spec = (\n        tf.TensorSpec((None,\
-          \ len(feature_indexes)), tf.float64, name=\"dense_input\"),\n    )\n   \
-          \ model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=spec,\
-          \ opset=13)\n    onnx.save(model_proto, model_output_path)\n\n"
-        image: quay.io/modh/runtime-images:runtime-cuda-tensorflow-ubi9-python-3.9-2024a-20240523
+          \ InputPath(),\n    model_output_path: OutputPath(),\n):\n    import pickle\n\
+          \    from pathlib import Path\n\n    import numpy as np\n    import pandas\
+          \ as pd\n    import torch\n    import torch.nn as nn\n    from sklearn.preprocessing\
+          \ import StandardScaler\n    from sklearn.utils import class_weight\n\n\
+          \    torch.set_default_dtype(torch.float64)\n\n    feature_cols = list(range(7))\n\
+          \    label_col = 7\n\n    df_train = pd.read_csv(train_data_input_path)\n\
+          \    df_val = pd.read_csv(validate_data_input_path)\n\n    X_train = df_train.iloc[:,\
+          \ feature_cols].values\n    y_train = df_train.iloc[:, label_col].values.reshape(-1,\
+          \ 1)\n\n    X_val = df_val.iloc[:, feature_cols].values\n    y_val = df_val.iloc[:,\
+          \ label_col].values.reshape(-1, 1)\n\n    scaler = StandardScaler()\n  \
+          \  X_train = scaler.fit_transform(X_train).astype(\"float64\")\n    X_val\
+          \ = scaler.transform(X_val).astype(\"float64\")\n    y_train = y_train.astype(\"\
+          float64\")\n    y_val = y_val.astype(\"float64\")\n\n    Path(\"artifact\"\
+          ).mkdir(parents=True, exist_ok=True)\n    with open(\"artifact/scaler.pkl\"\
+          , \"wb\") as f:\n        pickle.dump(scaler, f)\n\n    cw = class_weight.compute_class_weight(\n\
+          \        \"balanced\", classes=np.unique(y_train), y=y_train.ravel()\n \
+          \   )\n    pos_weight = torch.tensor([cw[1] / cw[0]], dtype=torch.float64)\n\
+          \n    class FraudNetLarge(nn.Module):\n        def __init__(self, input_dim):\n\
+          \            super().__init__()\n            self.net = nn.Sequential(\n\
+          \                nn.Linear(input_dim, 4096),\n                nn.BatchNorm1d(4096),\n\
+          \                nn.ReLU(),\n                nn.Dropout(0.3),\n        \
+          \        nn.Linear(4096, 4096),\n                nn.BatchNorm1d(4096),\n\
+          \                nn.ReLU(),\n                nn.Dropout(0.3),\n        \
+          \        nn.Linear(4096, 4096),\n                nn.BatchNorm1d(4096),\n\
+          \                nn.ReLU(),\n                nn.Dropout(0.3),\n        \
+          \        nn.Linear(4096, 1),\n                nn.Sigmoid(),\n          \
+          \  )\n\n        def forward(self, x):\n            return self.net(x)\n\n\
+          \    device = torch.device(\"cuda\" if torch.cuda.is_available() else \"\
+          cpu\")\n    model = FraudNetLarge(len(feature_cols)).to(device)\n\n    X_train_t\
+          \ = torch.tensor(X_train, device=device)\n    y_train_t = torch.tensor(y_train,\
+          \ device=device)\n    X_val_t = torch.tensor(X_val, device=device)\n   \
+          \ y_val_t = torch.tensor(y_val, device=device)\n\n    sample_weights = (y_train_t\
+          \ * (pos_weight[0] - 1) + 1).flatten()\n    criterion = nn.BCELoss(weight=sample_weights)\n\
+          \n    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)\n\n    model.train()\n\
+          \    optimizer.zero_grad()\n    preds = model(X_train_t)\n    loss = criterion(preds,\
+          \ y_train_t)\n    loss.backward()\n    optimizer.step()\n\n    model.eval()\n\
+          \    with torch.no_grad():\n        val_preds = model(X_val_t)\n       \
+          \ val_loss = nn.BCELoss()(val_preds, y_val_t)\n        val_acc = ((val_preds\
+          \ > 0.5).float() == y_val_t).float().mean()\n\n    print(\n        f\"Epoch\
+          \ 1: train loss {loss.item():.4f} | val loss {val_loss.item():.4f} | val\
+          \ acc {val_acc.item():.4f}\"\n    )\n\n    dummy = torch.randn(1, len(feature_cols),\
+          \ dtype=torch.float64)\n    torch.onnx.export(\n        model.cpu(),\n \
+          \       dummy,\n        model_output_path,\n        input_names=[\"dense_input\"\
+          ],\n        output_names=[\"output\"],\n        dynamic_axes={\"dense_input\"\
+          : {0: \"batch\"}, \"output\": {0: \"batch\"}},\n        opset_version=13,\n\
+          \    )\n\n"
+        image: quay.io/modh/runtime-images:runtime-cuda-pytorch-ubi9-python-3.11-20250501-8e41d5c
     exec-upload-model:
       container:
         args:
@@ -155,10 +162,9 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.5.0'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'boto3==1.35.55'\
-          \ 'botocore==1.35.55' && \"$0\" \"$@\"\n"
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -186,7 +192,7 @@ deploymentSpec:
         env:
         - name: S3_KEY
           value: models/fraud/1/model.onnx
-        image: quay.io/modh/runtime-images:runtime-cuda-tensorflow-ubi9-python-3.9-2024a-20240523
+        image: quay.io/modh/runtime-images:runtime-cuda-pytorch-ubi9-python-3.11-20250501-8e41d5c
 pipelineInfo:
   name: train-upload-model
 root:
@@ -234,7 +240,7 @@ root:
         taskInfo:
           name: upload-model
 schemaVersion: 2.1.0
-sdkVersion: kfp-2.5.0
+sdkVersion: kfp-2.13.0
 ---
 platforms:
   kubernetes:
@@ -254,3 +260,6 @@ platforms:
             - envVar: AWS_S3_ENDPOINT
               secretKey: AWS_S3_ENDPOINT
             secretName: aws-connection-my-storage
+            secretNameParameter:
+              runtimeValue:
+                constant: aws-connection-my-storage

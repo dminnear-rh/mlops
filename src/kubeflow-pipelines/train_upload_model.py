@@ -5,7 +5,7 @@ from kfp.dsl import InputPath, OutputPath
 
 
 @dsl.component(
-    base_image="quay.io/modh/runtime-images:runtime-cuda-tensorflow-ubi9-python-3.9-2024a-20240523"
+    base_image="quay.io/modh/runtime-images:runtime-cuda-pytorch-ubi9-python-3.11-20250501-8e41d5c"
 )
 def get_data(
     train_data_output_path: OutputPath(), validate_data_output_path: OutputPath()
@@ -24,106 +24,119 @@ def get_data(
 
 
 @dsl.component(
-    base_image="quay.io/modh/runtime-images:runtime-cuda-tensorflow-ubi9-python-3.9-2024a-20240523",
-    packages_to_install=["onnx==1.17.0", "onnxruntime==1.19.2", "tf2onnx==1.16.1"],
+    base_image="quay.io/modh/runtime-images:runtime-cuda-pytorch-ubi9-python-3.11-20250501-8e41d5c",
 )
 def train_model(
     train_data_input_path: InputPath(),
     validate_data_input_path: InputPath(),
     model_output_path: OutputPath(),
 ):
-    # This version builds a large network (4096 units per layer) in float64 to
-    # force high memory usage during training.
-
     import pickle
     from pathlib import Path
 
     import numpy as np
-    import onnx
     import pandas as pd
-    import tensorflow as tf
-    import tf2onnx
-    from keras.layers import Activation, BatchNormalization, Dense, Dropout, Input
-    from keras.models import Sequential
+    import torch
+    import torch.nn as nn
     from sklearn.preprocessing import StandardScaler
     from sklearn.utils import class_weight
 
-    # Use float64 to double tensor size
-    tf.keras.backend.set_floatx("float64")
+    torch.set_default_dtype(torch.float64)
 
-    # Columns: 0..6 are features, 7 is the label
-    feature_indexes = list(range(7))
-    label_indexes = [7]
+    feature_cols = list(range(7))
+    label_col = 7
 
-    # Load data
-    X_train_df = pd.read_csv(train_data_input_path)
-    y_train_df = X_train_df.iloc[:, label_indexes]
-    X_train_df = X_train_df.iloc[:, feature_indexes]
+    df_train = pd.read_csv(train_data_input_path)
+    df_val = pd.read_csv(validate_data_input_path)
 
-    X_val_df = pd.read_csv(validate_data_input_path)
-    y_val_df = X_val_df.iloc[:, label_indexes]
-    X_val_df = X_val_df.iloc[:, feature_indexes]
+    X_train = df_train.iloc[:, feature_cols].values
+    y_train = df_train.iloc[:, label_col].values.reshape(-1, 1)
 
-    # Scale features
+    X_val = df_val.iloc[:, feature_cols].values
+    y_val = df_val.iloc[:, label_col].values.reshape(-1, 1)
+
     scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train_df.values).astype("float64")
-    X_val = scaler.transform(X_val_df.values).astype("float64")
+    X_train = scaler.fit_transform(X_train).astype("float64")
+    X_val = scaler.transform(X_val).astype("float64")
+    y_train = y_train.astype("float64")
+    y_val = y_val.astype("float64")
 
     Path("artifact").mkdir(parents=True, exist_ok=True)
-    pickle.dump(scaler, open("artifact/scaler.pkl", "wb"))
+    with open("artifact/scaler.pkl", "wb") as f:
+        pickle.dump(scaler, f)
 
-    # Class weights for imbalance
     cw = class_weight.compute_class_weight(
-        "balanced", classes=np.unique(y_train_df), y=y_train_df.values.ravel()
+        "balanced", classes=np.unique(y_train), y=y_train.ravel()
     )
-    class_weights = {i: w for i, w in enumerate(cw)}
+    pos_weight = torch.tensor([cw[1] / cw[0]], dtype=torch.float64)
 
-    # Build a large fully connected network
-    UNITS = 4096
-    model = Sequential(
-        [
-            Input(shape=(len(feature_indexes),), dtype="float64"),
-            Dense(UNITS, activation="relu"),
-            Dropout(0.3),
-            Dense(UNITS),
-            BatchNormalization(),
-            Activation("relu"),
-            Dropout(0.3),
-            Dense(UNITS),
-            BatchNormalization(),
-            Activation("relu"),
-            Dropout(0.3),
-            Dense(UNITS),
-            BatchNormalization(),
-            Activation("relu"),
-            Dropout(0.3),
-            Dense(1, activation="sigmoid"),
-        ]
+    class FraudNetLarge(nn.Module):
+        def __init__(self, input_dim):
+            super().__init__()
+            self.net = nn.Sequential(
+                nn.Linear(input_dim, 4096),
+                nn.BatchNorm1d(4096),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(4096, 4096),
+                nn.BatchNorm1d(4096),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(4096, 4096),
+                nn.BatchNorm1d(4096),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(4096, 1),
+                nn.Sigmoid(),
+            )
+
+        def forward(self, x):
+            return self.net(x)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = FraudNetLarge(len(feature_cols)).to(device)
+
+    X_train_t = torch.tensor(X_train, device=device)
+    y_train_t = torch.tensor(y_train, device=device)
+    X_val_t = torch.tensor(X_val, device=device)
+    y_val_t = torch.tensor(y_val, device=device)
+
+    sample_weights = (y_train_t * (pos_weight[0] - 1) + 1).flatten()
+    criterion = nn.BCELoss(weight=sample_weights)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+
+    model.train()
+    optimizer.zero_grad()
+    preds = model(X_train_t)
+    loss = criterion(preds, y_train_t)
+    loss.backward()
+    optimizer.step()
+
+    model.eval()
+    with torch.no_grad():
+        val_preds = model(X_val_t)
+        val_loss = nn.BCELoss()(val_preds, y_val_t)
+        val_acc = ((val_preds > 0.5).float() == y_val_t).float().mean()
+
+    print(
+        f"Epoch 1: train loss {loss.item():.4f} | val loss {val_loss.item():.4f} | val acc {val_acc.item():.4f}"
     )
 
-    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
-    model.summary()
-
-    model.fit(
-        X_train,
-        y_train_df,
-        epochs=2,
-        validation_data=(X_val, y_val_df),
-        verbose=2,
-        class_weight=class_weights,
+    dummy = torch.randn(1, len(feature_cols), dtype=torch.float64)
+    torch.onnx.export(
+        model.cpu(),
+        dummy,
+        model_output_path,
+        input_names=["dense_input"],
+        output_names=["output"],
+        dynamic_axes={"dense_input": {0: "batch"}, "output": {0: "batch"}},
+        opset_version=13,
     )
-
-    # Export to ONNX
-    spec = (
-        tf.TensorSpec((None, len(feature_indexes)), tf.float64, name="dense_input"),
-    )
-    model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=spec, opset=13)
-    onnx.save(model_proto, model_output_path)
 
 
 @dsl.component(
-    base_image="quay.io/modh/runtime-images:runtime-cuda-tensorflow-ubi9-python-3.9-2024a-20240523",
-    packages_to_install=["boto3==1.35.55", "botocore==1.35.55"],
+    base_image="quay.io/modh/runtime-images:runtime-cuda-pytorch-ubi9-python-3.11-20250501-8e41d5c",
 )
 def upload_model(input_model_path: InputPath()):
     import os
