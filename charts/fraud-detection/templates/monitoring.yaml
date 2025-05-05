@@ -16,3 +16,10 @@ data:
   config.yaml: |
     prometheus:
       scrapeInterval: 5s
+      nodeSelector:
+        prometheus: "true"
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "prometheus"
+          effect: "NoSchedule"
