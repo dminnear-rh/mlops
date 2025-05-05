@@ -69,14 +69,17 @@ def train_model(
     )
     pos_weight = torch.tensor([cw[1] / cw[0]], dtype=torch.float32)
 
-    class FraudNetSmall(nn.Module):
+    class FraudNetMedium(nn.Module):
         def __init__(self, input_dim):
             super().__init__()
             self.net = nn.Sequential(
-                nn.Linear(input_dim, 64),
+                nn.Linear(input_dim, 128),
                 nn.ReLU(),
                 nn.Dropout(0.2),
-                nn.Linear(64, 64),
+                nn.Linear(128, 128),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(128, 64),
                 nn.ReLU(),
                 nn.Dropout(0.2),
                 nn.Linear(64, 1),
@@ -87,7 +90,7 @@ def train_model(
             return self.net(x)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = FraudNetSmall(len(feature_cols)).to(device)
+    model = FraudNetMedium(len(feature_cols)).to(device)
 
     X_train_t = torch.tensor(X_train, device=device)
     y_train_t = torch.tensor(y_train, device=device)
@@ -96,30 +99,28 @@ def train_model(
 
     sample_weights = (y_train_t * (pos_weight[0] - 1) + 1).flatten()
     criterion = nn.BCELoss(weight=sample_weights)
-
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    # Train
-    model.train()
-    optimizer.zero_grad()
-    preds = model(X_train_t).flatten()
     y_train_flat = y_train_t.flatten()
-    loss = criterion(preds, y_train_flat)
-    loss.backward()
-    optimizer.step()
 
-    # Eval
-    model.eval()
-    with torch.no_grad():
-        val_preds = model(X_val_t).flatten()
-        val_loss = nn.BCELoss()(val_preds, y_val_t.flatten())
-        val_acc = ((val_preds > 0.5).float() == y_val_t.flatten()).float().mean()
+    for epoch in range(3):
+        model.train()
+        optimizer.zero_grad()
+        preds = model(X_train_t).flatten()
+        loss = criterion(preds, y_train_flat)
+        loss.backward()
+        optimizer.step()
 
-    print(
-        f"Epoch 1: train loss {loss.item():.4f} | val loss {val_loss.item():.4f} | val acc {val_acc.item():.4f}"
-    )
+        model.eval()
+        with torch.no_grad():
+            val_preds = model(X_val_t).flatten()
+            val_loss = nn.BCELoss()(val_preds, y_val_t.flatten())
+            val_acc = ((val_preds > 0.5).float() == y_val_t.flatten()).float().mean()
 
-    # Export ONNX
+        print(
+            f"Epoch {epoch + 1}: train loss {loss.item():.4f} | val loss {val_loss.item():.4f} | val acc {val_acc.item():.4f}"
+        )
+
     dummy = torch.randn(1, len(feature_cols), dtype=torch.float32)
     torch.onnx.export(
         model.cpu(),

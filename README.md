@@ -42,3 +42,5 @@ Once the pattern is fully installed (all applications in Argo are healthy and sy
    - Give the run a name (e.g., `small-model` or `v1`) and click **Create run** at the bottom of the form.
 
 You’ll be redirected to the run details page, where you can monitor its progress.
+
+> **Note:** After the run completes, you'll need to manually restart the `fraud-detection-predictor-*` pod. This is because the predictor uses an init container to preload the model from MinIO. Restarting the pod ensures it picks up the newly trained model, assuming it was saved to the same path used in the deployment.
