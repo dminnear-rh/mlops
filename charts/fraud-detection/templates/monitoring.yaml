@@ -6,3 +6,5 @@ metadata:
 data:
   config.yaml: |
     enableUserWorkload: true
+    prometheusK8s:
+      scrapeInterval: 5s
