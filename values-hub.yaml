@@ -8,7 +8,8 @@ clusterGroup:
     - inferencing-app
     - fraud-detection:
         labels:
-          opendatahub.io/dashboard: "true"
+          opendatahub.io/dashboard: true
+          openshift.io/cluster-monitoring: true
     - redhat-ods-operator:
         operatorGroup: true
         targetNamespaces: []
