@@ -16,7 +16,8 @@ spec:
     spec:
       containers:
       - name: {{ .Values.appName }}
-        image: quay.io/dminnear/fraud-detection-app:latest
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
         env:
         - name: INFERENCE_ENDPOINT
           value: https://fraud-detection-fraud-detection.apps.{{ .Values.global.clusterDomain }}/v2/models/fraud-detection/infer
