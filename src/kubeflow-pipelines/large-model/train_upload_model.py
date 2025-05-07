@@ -31,7 +31,9 @@ def train_model(
     validate_data_input_path: InputPath(),
     model_output_path: OutputPath(),
 ):
+    # 1. Imports ------------------------------------------------------
     import pickle
+    import time
     from pathlib import Path
 
     import numpy as np
@@ -41,91 +43,155 @@ def train_model(
     from sklearn.preprocessing import StandardScaler
     from sklearn.utils import class_weight
 
-    torch.set_default_dtype(torch.float64)
+    torch.set_default_dtype(torch.float32)
+    device = torch.device("cpu")  # keep memory in RSS
 
-    feature_cols = list(range(7))
-    label_col = 7
+    # 2. Load and scale data -----------------------------------------
+    cols = list(range(7))
+    lbl = 7
+    df_tr = pd.read_csv(train_data_input_path)
+    df_va = pd.read_csv(validate_data_input_path)
 
-    df_train = pd.read_csv(train_data_input_path)
-    df_val = pd.read_csv(validate_data_input_path)
-
-    X_train = df_train.iloc[:, feature_cols].values
-    y_train = df_train.iloc[:, label_col].values.reshape(-1, 1)
-
-    X_val = df_val.iloc[:, feature_cols].values
-    y_val = df_val.iloc[:, label_col].values.reshape(-1, 1)
+    X_tr = df_tr.iloc[:, cols].values.astype("float32")
+    y_tr = df_tr.iloc[:, lbl].values.reshape(-1, 1).astype("float32")
+    X_va = df_va.iloc[:, cols].values.astype("float32")
+    y_va = df_va.iloc[:, lbl].values.reshape(-1, 1).astype("float32")
 
     scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train).astype("float64")
-    X_val = scaler.transform(X_val).astype("float64")
-    y_train = y_train.astype("float64")
-    y_val = y_val.astype("float64")
+    X_tr = scaler.fit_transform(X_tr).astype("float32")
+    X_va = scaler.transform(X_va).astype("float32")
 
-    Path("artifact").mkdir(parents=True, exist_ok=True)
+    Path("artifact").mkdir(exist_ok=True)
     with open("artifact/scaler.pkl", "wb") as f:
         pickle.dump(scaler, f)
 
+    # 3. Balanced loss weight (capped) -------------------------------
     cw = class_weight.compute_class_weight(
-        "balanced", classes=np.unique(y_train), y=y_train.ravel()
+        "balanced", classes=np.unique(y_tr), y=y_tr.ravel()
     )
-    pos_weight = torch.tensor([cw[1] / cw[0]], dtype=torch.float64)
+    pos_w_val = min(cw[1] / cw[0], 5.0)  # cap at 5 to avoid over-bias
+    pos_w = torch.tensor([pos_w_val], dtype=torch.float32)
 
-    class FraudNetLarge(nn.Module):
-        def __init__(self, input_dim):
+    # 4. Network (logits out) ----------------------------------------
+    class FraudNet(nn.Module):
+        def __init__(self, inp: int):
             super().__init__()
-            self.net = nn.Sequential(
-                nn.Linear(input_dim, 4096),
-                nn.BatchNorm1d(4096),
+            hid = 4096
+            self.layers = nn.Sequential(
+                nn.Linear(inp, hid),
+                nn.BatchNorm1d(hid),
                 nn.ReLU(),
                 nn.Dropout(0.3),
-                nn.Linear(4096, 4096),
-                nn.BatchNorm1d(4096),
+                nn.Linear(hid, hid),
+                nn.BatchNorm1d(hid),
                 nn.ReLU(),
                 nn.Dropout(0.3),
-                nn.Linear(4096, 4096),
-                nn.BatchNorm1d(4096),
+                nn.Linear(hid, hid),
+                nn.BatchNorm1d(hid),
                 nn.ReLU(),
                 nn.Dropout(0.3),
-                nn.Linear(4096, 1),
-                nn.Sigmoid(),
+                nn.Linear(hid, 1),
             )
 
         def forward(self, x):
-            return self.net(x)
+            return self.layers(x)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = FraudNetLarge(len(feature_cols)).to(device)
+    model = FraudNet(len(cols)).to(device)
 
-    X_train_t = torch.tensor(X_train, device=device)
-    y_train_t = torch.tensor(y_train, device=device)
-    X_val_t = torch.tensor(X_val, device=device)
-    y_val_t = torch.tensor(y_val, device=device)
+    # 5. Prepare tensors and loaders ---------------------------------
+    t_tr = torch.tensor(np.hstack([X_tr, y_tr]), device=device)
+    t_va = torch.tensor(np.hstack([X_va, y_va]), device=device)
 
-    sample_weights = (y_train_t * (pos_weight[0] - 1) + 1).flatten()
-    criterion = nn.BCELoss(weight=sample_weights)
+    def make_loader(t: torch.Tensor, bs: int):
+        ds = torch.utils.data.TensorDataset(t[:, : len(cols)], t[:, len(cols) :])
+        return torch.utils.data.DataLoader(ds, batch_size=bs, shuffle=True)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    loss_fn_template = lambda w: nn.BCEWithLogitsLoss(pos_weight=w)
+    optim = torch.optim.Adam(model.parameters(), lr=1e-4)
 
-    model.train()
-    optimizer.zero_grad()
-    preds = model(X_train_t)
-    loss = criterion(preds, y_train_t)
-    loss.backward()
-    optimizer.step()
+    batch_sizes = [
+        2048,
+        2048,
+        2048,
+        2048,
+        2048,
+        2048,
+        2048,
+        2048,
+        4096,
+        8192,
+        16384,
+        32768,
+        65536,
+        131072,
+        262144,
+        524288,
+    ]
 
+    # 6. Training loop ----------------------------------------------
+    for ep, bs in enumerate(batch_sizes, 1):
+        tic = time.perf_counter()
+        loader = make_loader(t_tr, bs)
+        val_load = make_loader(t_va, bs)
+
+        model.train()
+        for xb, yb in loader:  # one huge batch => one iteration
+            samp_w = yb * (pos_w[0] - 1) + 1
+            loss_f = loss_fn_template(samp_w)
+            optim.zero_grad()
+            logits = model(xb)
+            loss = loss_f(logits, yb)
+            loss.backward()
+            optim.step()
+            break  # process exactly one batch per epoch
+
+        model.eval()
+        with torch.no_grad():
+            xv, yv = next(iter(val_load))
+            v_logit = model(xv)
+            v_loss = nn.BCEWithLogitsLoss()(v_logit, yv)
+            v_prob = torch.sigmoid(v_logit)
+            v_acc = ((v_prob > 0.5).float() == yv).float().mean()
+
+        dt = time.perf_counter() - tic
+        print(
+            f"[epoch {ep}] bs={bs:<6} dur={dt:6.1f}s "
+            f"| train_loss={loss.item():.4f} "
+            f"| val_loss={v_loss.item():.4f} "
+            f"| val_acc={v_acc.item():.4f}"
+        )
+
+    # 7. Threshold calibration --------------------------------------
     model.eval()
     with torch.no_grad():
-        val_preds = model(X_val_t)
-        val_loss = nn.BCELoss()(val_preds, y_val_t)
-        val_acc = ((val_preds > 0.5).float() == y_val_t).float().mean()
+        full_logits = model(t_va[:, : len(cols)])
+        probs = torch.sigmoid(full_logits).cpu().numpy().ravel()
+        labels = t_va[:, len(cols) :].cpu().numpy().ravel()
 
-    print(
-        f"Epoch 1: train loss {loss.item():.4f} | val loss {val_loss.item():.4f} | val acc {val_acc.item():.4f}"
-    )
+    best_f1 = 0.0
+    best_thr = 0.5
+    for thr in np.linspace(0.05, 0.95, 19):
+        preds = (probs > thr).astype(int)
+        tp = np.sum((preds == 1) & (labels == 1))
+        fp = np.sum((preds == 1) & (labels == 0))
+        fn = np.sum((preds == 0) & (labels == 1))
+        denom = 2 * tp + fp + fn
+        if denom == 0:
+            continue
+        f1 = 2 * tp / denom
+        if f1 > best_f1:
+            best_f1, best_thr = f1, thr
 
-    dummy = torch.randn(1, len(feature_cols), dtype=torch.float64)
+    with open("artifact/threshold.txt", "w") as f:
+        f.write(f"{best_thr}\n")
+    print(f"Chosen threshold {best_thr:.2f} with F1 {best_f1:.3f}")
+
+    # 8. Export ONNX (attach Sigmoid) -------------------------------
+    print("Exporting ONNX model.")
+    export_model = nn.Sequential(model.cpu(), nn.Sigmoid())
+    dummy = torch.randn(1, len(cols), dtype=torch.float32)
     torch.onnx.export(
-        model.cpu(),
+        export_model,
         dummy,
         model_output_path,
         input_names=["dense_input"],
